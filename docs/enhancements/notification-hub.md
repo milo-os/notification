@@ -13,6 +13,7 @@ latest-milestone: "v0"
   - [Non-Goals](#non-goals)
 - [Proposal](#proposal)
   - [How It Works](#how-it-works)
+  - [Why not NATS, Vector, or a gateway](#why-not-nats-vector-or-a-gateway)
   - [User Stories](#user-stories)
   - [Key Capabilities](#key-capabilities)
   - [Notes / Constraints / Caveats](#notes--constraints--caveats)
@@ -310,6 +311,32 @@ status:
         kind: NotificationDelivery
         name: suspicious-login-email-xk9p2
 ```
+
+### Why not NATS, Vector, or a gateway
+
+We considered routing the SDK through a Vector agent (for local disk durability,
+consistent with the billing pipeline) and through NATS + CloudEvents (for
+decoupling and fan-out). Both were rejected because notifications have a
+fundamentally different problem profile from billing events:
+
+- **Notifications are low-frequency and event-triggered** — suspicious logins,
+  quota alerts, billing thresholds. They are not a high-throughput stream where
+  etcd becomes a bottleneck.
+- **The `Notification` CR is itself the durable audit record.** Adding NATS or
+  Vector as an intermediate step means the durable record does not exist until a
+  consumer processes the message — introducing a window where a notification can
+  be silently lost if the consumer is down.
+- **The SDK creating a CR gives synchronous confirmation.** The caller knows the
+  notification exists in etcd before returning. An async transport trades this
+  guarantee for throughput that notifications do not need.
+- **Infrastructure cost without a matching problem.** A Vector DaemonSet or NATS
+  JetStream cluster is justified when event rates make the Kubernetes API a
+  bottleneck. At notification rates, the Kubernetes API backed by etcd is
+  sufficient durability.
+
+If notification volume ever reaches billing-event scale, the transport can be
+changed without modifying the `NotificationDelivery` contract — provider
+controllers and the hub are unaffected by how `Notification` CRs arrive.
 
 <p align="center">
   <img src="../diagrams/notification-hub-containers.png" alt="Notification Hub — Container View" />
