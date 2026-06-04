@@ -353,9 +353,7 @@ If notification volume ever reaches billing-event scale, the transport can be
 changed without modifying the `NotificationDelivery` contract — provider
 controllers and the hub are unaffected by how `Notification` CRs arrive.
 
-<p align="center">
-  <img src="../diagrams/notification-hub-containers.png" alt="Notification Hub — Container View" />
-</p>
+![Notification Hub — Container View](../diagrams/notification-hub-containers.png)
 
 ### User Stories
 
@@ -499,7 +497,7 @@ different category assignments are a v1+ capability.
 ### Risks and Mitigations
 
 | Risk | Mitigation |
-|------|------------|
+| ------ | ------------ |
 | Contact not found at any hierarchy level | Hub sets `status.phase: Failed` with reason `ContactNotResolved`. The notification is a durable record; an operator can create the missing contact and re-trigger by patching `spec.retryAfter`. Alert fires on `notification_resolution_failures_total > 0`. |
 | Preference enforcement races with contact updates | Preferences are evaluated at webhook admission time and again by the hub controller during fan-out. If they diverge (e.g. contact updated mid-flight), the controller's view wins. The admission webhook result is advisory for fast rejection, not authoritative. |
 | `security` bypass creates a channel for audit-logging | Every bypass of preference enforcement for the `security` category is recorded in `Notification.status.conditions` with `reason: SecurityCategoryNonSuppressible`. This creates a per-notification audit trail without requiring a separate system. |
@@ -513,7 +511,7 @@ different category assignments are a v1+ capability.
 ### Resource Overview
 
 | Resource | Scope | Owner | Purpose |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `NotificationProviderClass` | Cluster | Operator | Registers a delivery provider for a channel; carries `parametersRef` to provider-specific config |
 | `NotificationContact` | Cluster | Notification Hub | Contact address and per-category channel preferences at user, project, or org level |
 | `Notification` | Cluster | Notification Hub | Send request: target, category, template, variables |
@@ -557,7 +555,7 @@ controller indexes contacts by subject for efficient lookup.
 **Spec fields:**
 
 | Field | Type | Required | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `subjectRef.kind` | enum | Yes | The kind of the resource this contact belongs to. One of `User`, `Project`, `Organization`. |
 | `subjectRef.name` | string | Yes | The name of the subject resource. Must reference an existing resource of the given kind. |
 | `email` | string | No | Email address for email channel delivery |
@@ -655,7 +653,7 @@ resource, preventing orphaned contacts.
 **Status conditions:**
 
 | Condition | Status | Reason | Meaning |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `Ready` | `True` | `ContactReady` | Contact is valid and resolvable |
 | `Ready` | `False` | `InvalidEmail` | Email field does not parse as a valid address |
 | `Ready` | `False` | `InvalidPhone` | Phone field does not parse as E.164 |
@@ -672,7 +670,7 @@ exist and ownerReferences work uniformly throughout the resource graph.
 **Spec fields:**
 
 | Field | Type | Required | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `target.userRef.name` | string | Conditional | Target user. Mutually exclusive with `projectRef` and `orgRef`. |
 | `target.projectRef.name` | string | Conditional | Target project. Hub resolves the project-level contact, falling back to org. |
 | `target.orgRef.name` | string | Conditional | Target organization. Hub resolves the org-level contact. |
@@ -683,7 +681,7 @@ exist and ownerReferences work uniformly throughout the resource graph.
 **Status fields:**
 
 | Field | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `phase` | enum | `Pending`, `Delivering`, `Delivered`, `PartiallyDelivered`, `Suppressed`, `Failed` |
 | `resolvedContact.name` | string | Name of the cluster-scoped `NotificationContact` used for this delivery |
 | `channels` | list | Per-channel delivery status |
@@ -764,7 +762,7 @@ all channel types are deployed.
 **Spec fields:**
 
 | Field | Type | Required | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `requiredVariables` | []string | No | Variable keys that must be present in any `Notification.spec.variables` referencing this template. Validated at admission. |
 | `channels.email.subject` | string | Conditional | Email subject line. Go template syntax. Required if `channels.email` is present. |
 | `channels.email.bodyTemplate` | string | Conditional | Email body in HTML. Go template syntax. Required if `channels.email` is present. |
@@ -889,7 +887,7 @@ annotation per channel.
 **Spec fields:**
 
 | Field | Type | Required | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `channel` | enum | Yes | The delivery channel this class handles. One of `email`, `sms`, `push`, `inApp`. |
 | `provider` | string | Yes | Provider identifier (e.g. `resend`, `loops`, `twilio`, `apns`, `fcm`). Matched by provider controllers to self-select. |
 | `parametersRef.group` | string | Yes | API group of the provider-specific configuration resource. |
@@ -970,7 +968,7 @@ for the same lifetime as their parent.
 **Spec fields:**
 
 | Field | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `channel` | enum | Channel type: `email`, `sms`, `push`, `inApp` |
 | `providerClassRef.name` | string | Name of the `NotificationProviderClass` selected for this delivery. Provider controllers filter on this field to self-select. |
 | `resolvedAddress` | string | Contact address for this channel resolved from `NotificationContact` (email address, E.164 phone number, or push device token) |
@@ -982,7 +980,7 @@ for the same lifetime as their parent.
 **Status fields:**
 
 | Field | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `phase` | enum | `Pending`, `Delivered`, `Failed` |
 | `providerMessageId` | string | Provider-assigned message ID for deduplication and tracking |
 | `deliveredAt` | time | Timestamp from the provider's delivery acknowledgment |
@@ -1194,7 +1192,7 @@ settings sections.
 ### RBAC Boundaries
 
 | Service | Resource | Access |
-|---|---|---|
+| --- | --- | --- |
 | Platform services (IAM, billing, compute, etc.) | `Notification` | Create |
 | Platform services | `NotificationTemplate` | Read |
 | Hub controller | `Notification` | Full (owns the CRD) |
@@ -1228,7 +1226,7 @@ Go metrics SDK. Metrics are exported via the OTel Prometheus exporter.
 **Core metrics:**
 
 | Metric | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `notification_send_requests_total` | Counter | `Notification` resources created, by category |
 | `notification_resolution_failures_total` | Counter | `Notification` resources that failed contact resolution, by reason |
 | `notification_suppressions_total` | Counter | `Notification` resources suppressed by preference enforcement, by category |
@@ -1239,7 +1237,7 @@ Go metrics SDK. Metrics are exported via the OTel Prometheus exporter.
 **Core alert rules:**
 
 | Alert | Condition | Severity |
-|-------|-----------|----------|
+| ------- | ----------- | ---------- |
 | `NotificationResolutionFailures` | `notification_resolution_failures_total` rate > 0 for 5 minutes | Warning |
 | `NotificationDeliveryFailures` | `notification_delivery_failures_total` rate > 0 for 5 minutes | Critical |
 | `NotificationDeliveryStale` | `notification_delivery_latency_seconds` p99 > 60 seconds | Warning |
