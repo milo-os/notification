@@ -25,6 +25,7 @@ latest-milestone: "v0"
   - [NotificationTemplate Resource](#notificationtemplate-resource)
   - [Contact Resolution and Hierarchy](#contact-resolution-and-hierarchy)
   - [Category-Based Routing and Preference Enforcement](#category-based-routing-and-preference-enforcement)
+  - [NotificationProviderClass Resource](#notificationproviderclass-resource)
   - [NotificationDelivery Resource](#notificationdelivery-resource)
   - [Provider Controller Pattern](#provider-controller-pattern)
   - [Notification SDK](#notification-sdk)
@@ -163,12 +164,24 @@ blocks — email subject and body, SMS body, push title and body. A single
 template covers all channels; provider controllers select the block matching the
 channel they are delivering on.
 
+**`NotificationProviderClass`** is a cluster-scoped operator-configured resource
+that registers a delivery provider for a specific channel. It names the channel
+(`email`, `sms`, `push`, `inApp`), the provider identifier, and carries a
+`spec.parametersRef` pointing to a provider-owned configuration resource (e.g.
+`ResendProviderConfig`). The hub reads `NotificationProviderClass` to select the
+right provider when creating a `NotificationDelivery`; the portal lists them to
+discover which channels are available to users. This is the same
+`parametersRef` extensibility pattern used by `PaymentMethodClass` in billing —
+adding a new provider never requires changes to the hub or to any core CRD
+schema.
+
 **`NotificationDelivery`** is created by the hub — one per enabled channel per
-`Notification`. It carries the resolved contact address for that channel, the
-template reference, and the variables. Provider controllers watch
-`NotificationDelivery` resources filtered by `spec.channel` and are responsible
-for calling the external backend and updating delivery status. Adding a new
-channel provider requires only a new controller repo — the hub never changes.
+`Notification`. It carries the resolved contact address, the template reference,
+the variables, and a `spec.providerClassRef` that pins it to the
+`NotificationProviderClass` selected for delivery. Provider controllers watch
+`NotificationDelivery` resources whose `spec.providerClassRef` points to a class
+they own, so two email providers (Resend and Loops) can coexist without
+conflicting — each picks up only the deliveries assigned to it.
 
 ### How It Works
 
@@ -248,8 +261,10 @@ For `security`, enforcement is bypassed.
 **4. Hub controller creates a NotificationDelivery per channel.**
 
 For each channel for which an address exists and delivery is not suppressed, the
-hub creates a `NotificationDelivery` as a child of the `Notification`. It
-embeds the resolved contact address so provider controllers never need to read
+hub selects the default `NotificationProviderClass` for that channel (the one
+annotated `notification.miloapis.com/is-default-class: "true"`) and creates a
+`NotificationDelivery` as a child of the `Notification`. The resolved contact
+address is embedded so provider controllers never need to read
 `NotificationContact` directly:
 
 ```yaml
@@ -499,10 +514,11 @@ different category assignments are a v1+ capability.
 
 | Resource | Scope | Owner | Purpose |
 |---|---|---|---|
+| `NotificationProviderClass` | Cluster | Operator | Registers a delivery provider for a channel; carries `parametersRef` to provider-specific config |
 | `NotificationContact` | Cluster | Notification Hub | Contact address and per-category channel preferences at user, project, or org level |
 | `Notification` | Cluster | Notification Hub | Send request: target, category, template, variables |
 | `NotificationTemplate` | Cluster | Notification Hub | Per-channel content templates referenced by deliveries |
-| `NotificationDelivery` | Cluster | Notification Hub | One per enabled channel per Notification; carries resolved address and template for provider controllers |
+| `NotificationDelivery` | Cluster | Notification Hub | One per enabled channel per Notification; carries resolved address, template, and providerClassRef |
 
 Future channel resources (`SMS`, `SMSTemplate`, `Push`, `PushTemplate`,
 `PushDevice`, `InAppNotification`) follow the same pattern and are out of scope
@@ -853,6 +869,91 @@ The controller re-evaluates at reconcile time. The webhook result is not
 authoritative for the final delivery decision — it is an optimization to avoid
 enqueuing work that will immediately suppress.
 
+### NotificationProviderClass Resource
+
+`NotificationProviderClass` is cluster-scoped and created by platform operators.
+It registers a delivery provider for a specific channel, names the provider, and
+carries a `spec.parametersRef` pointing to a provider-owned configuration
+resource that holds provider-specific settings (API keys, sender addresses, app
+bundle IDs). `NotificationProviderClass` itself has no provider-specific fields
+— all provider config lives in the referenced resource. This follows the same
+`parametersRef` extensibility pattern as `PaymentMethodClass` in billing and the
+Kubernetes Gateway API's `GatewayClass`.
+
+A `NotificationProviderClass` is designated as the default for its channel by
+the annotation `notification.miloapis.com/is-default-class: "true"`. The hub
+selects the default class for a channel when creating `NotificationDelivery`
+unless a specific class is configured. Only one class may hold the default
+annotation per channel.
+
+**Spec fields:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `channel` | enum | Yes | The delivery channel this class handles. One of `email`, `sms`, `push`, `inApp`. |
+| `provider` | string | Yes | Provider identifier (e.g. `resend`, `loops`, `twilio`, `apns`, `fcm`). Matched by provider controllers to self-select. |
+| `parametersRef.group` | string | Yes | API group of the provider-specific configuration resource. |
+| `parametersRef.kind` | string | Yes | Kind of the provider-specific configuration resource. |
+| `parametersRef.name` | string | Yes | Name of the provider-specific configuration resource. |
+
+**Example — Resend as the default email provider:**
+
+```yaml
+apiVersion: notification.miloapis.com/v1alpha1
+kind: NotificationProviderClass
+metadata:
+  name: resend-default
+  annotations:
+    notification.miloapis.com/is-default-class: "true"
+spec:
+  channel: email
+  provider: resend
+  parametersRef:
+    group: resend.notification.miloapis.com
+    kind: ResendProviderConfig
+    name: default
+```
+
+**Example — Loops as a secondary email provider:**
+
+```yaml
+apiVersion: notification.miloapis.com/v1alpha1
+kind: NotificationProviderClass
+metadata:
+  name: loops-marketing
+spec:
+  channel: email
+  provider: loops
+  parametersRef:
+    group: loops.notification.miloapis.com
+    kind: LoopsProviderConfig
+    name: default
+```
+
+**Example — Twilio for SMS (v1+):**
+
+```yaml
+apiVersion: notification.miloapis.com/v1alpha1
+kind: NotificationProviderClass
+metadata:
+  name: twilio-default
+  annotations:
+    notification.miloapis.com/is-default-class: "true"
+spec:
+  channel: sms
+  provider: twilio
+  parametersRef:
+    group: twilio.notification.miloapis.com
+    kind: TwilioProviderConfig
+    name: default
+```
+
+The portal lists all `NotificationProviderClass` resources to discover which
+channels are available on the platform. It follows `parametersRef` to read
+provider-specific configuration it needs to render channel-specific UI (for
+example, a push provider config might expose app bundle IDs for device
+registration flows).
+
 ### NotificationDelivery Resource
 
 `NotificationDelivery` is cluster-scoped and created by the hub — one per
@@ -871,6 +972,7 @@ for the same lifetime as their parent.
 | Field | Type | Description |
 |---|---|---|
 | `channel` | enum | Channel type: `email`, `sms`, `push`, `inApp` |
+| `providerClassRef.name` | string | Name of the `NotificationProviderClass` selected for this delivery. Provider controllers filter on this field to self-select. |
 | `resolvedAddress` | string | Contact address for this channel resolved from `NotificationContact` (email address, E.164 phone number, or push device token) |
 | `templateRef.name` | string | Name of the cluster-scoped `NotificationTemplate` to render |
 | `variables` | map[string]string | Variables interpolated into the template at delivery time |
@@ -901,6 +1003,8 @@ metadata:
       blockOwnerDeletion: false
 spec:
   channel: email
+  providerClassRef:
+    name: resend-default
   resolvedAddress: "jane.smith@example.com"
   templateRef:
     name: suspicious-login-alert
@@ -926,36 +1030,42 @@ new provider or channel is added.
 
 **Responsibilities of a provider controller:**
 
-1. Watch `NotificationDelivery` resources where `spec.channel` matches the
-   channel the controller handles (e.g. `email`, `sms`).
+1. Watch `NotificationDelivery` resources where `spec.providerClassRef.name`
+   matches a `NotificationProviderClass` the controller owns (identified by
+   `spec.provider`). This is how two email providers coexist — `resend-provider`
+   picks up deliveries with `providerClassRef: resend-default`; `loops-provider`
+   picks up those with `providerClassRef: loops-marketing`.
 2. Read `spec.templateRef` and render the matching channel block from the
    `NotificationTemplate` using `spec.variables`.
 3. Call the external backend API using `spec.resolvedAddress` as the
-   destination. Provider credentials are held as environment variables or mounted
-   `Secret` references — never on the CRD.
+   destination. Provider credentials are read from the resource referenced by
+   the `NotificationProviderClass.spec.parametersRef` — never hardcoded or
+   placed on the CRD itself.
 4. Patch `NotificationDelivery` status with `phase: Delivered` or
    `phase: Failed`, a provider message ID, and a delivery timestamp.
 
 **Adding a new provider — Postmark for email:**
 
-1. A new `postmark-provider` controller repo.
-2. A kustomization deploying the controller with its Postmark credentials.
-3. Zero changes to the hub, `Notification`, `NotificationDelivery`, or
+1. A `PostmarkProviderConfig` CRD and a `postmark-provider` controller repo.
+2. A `NotificationProviderConfig` for `channel: email, provider: postmark`
+   with `parametersRef` pointing to a `PostmarkProviderConfig`.
+3. A kustomization deploying the controller and its credentials.
+4. Zero changes to the hub, `Notification`, `NotificationDelivery`, or
    `NotificationTemplate`.
 
 **Adding a new channel — Twilio SMS (v1+):**
 
-1. A new `twilio-provider` controller repo that watches `NotificationDelivery`
-   where `spec.channel == "sms"`.
-2. A kustomization with the Twilio credentials.
-3. Zero changes to the hub. The hub already creates `NotificationDelivery`
-   resources for any channel for which the resolved contact has an address — once
-   contacts carry `spec.phone`, SMS deliveries appear automatically.
+1. A `TwilioProviderConfig` CRD and a `twilio-provider` controller repo.
+2. A `NotificationProviderClass` for `channel: sms, provider: twilio`.
+3. A kustomization with the Twilio credentials.
+4. Zero changes to the hub. Once a `NotificationProviderClass` exists for `sms`
+   and contacts carry `spec.phone`, the hub automatically creates
+   `NotificationDelivery` resources for the SMS channel.
 
 **Reference implementations:**
 
 The `resend-provider` and `loops-provider` are the v0 reference implementations.
-Both watch `NotificationDelivery` where `spec.channel == "email"` and deliver
+Both watch `NotificationDelivery` filtered by `spec.providerClassRef` and deliver
 via the Resend and Loops APIs respectively. They are the template for all future
 provider controller implementations.
 
@@ -1059,15 +1169,23 @@ resource can fire a notification.
 The portal exposes a "Notifications" section in user account settings that
 allows users to:
 
-1. **View and update their `NotificationContact`** — email address (and in v1+
-   phone number) displayed and editable.
-2. **Manage per-category channel preferences** — a matrix of category rows and
-   channel columns with checkboxes. The `security` row is displayed as
-   non-editable with a tooltip explaining that security notifications are always
-   delivered.
-3. **View recent notifications** — a list of `Notification` resources across
-   all namespaces where `spec.target.userRef.name` matches the authenticated
-   user, showing category, template name, status, and timestamp.
+1. **Discover available channels** — the portal lists all `NotificationProviderClass`
+   resources to determine which channels (`email`, `sms`, `push`, `inApp`) are
+   active on the platform. Only channels with at least one deployed
+   `NotificationProviderClass` are shown. For each channel, the portal follows
+   `spec.parametersRef` to read provider-specific config it needs for UI
+   rendering (e.g. a push provider config exposes app bundle IDs for device
+   registration).
+2. **View and update their `NotificationContact`** — contact fields are rendered
+   per available channel. An email field is shown only if an email
+   `NotificationProviderClass` exists; a phone field only if an SMS class exists.
+3. **Manage per-category channel preferences** — a matrix of category rows and
+   channel columns with checkboxes, driven by the set of available channels
+   discovered from `NotificationProviderClass`. The `security` row is
+   non-editable.
+4. **View recent notifications** — a list of `Notification` resources where
+   `spec.target.userRef.name` matches the authenticated user, showing category,
+   template name, status, and timestamp.
 
 Project-owner and organization-owner UX for managing project- and org-level
 contacts follows the same pattern in the respective project and organization
@@ -1082,10 +1200,14 @@ settings sections.
 | Hub controller | `Notification` | Full (owns the CRD) |
 | Hub controller | `NotificationContact` | Read |
 | Hub controller | `NotificationTemplate` | Read |
+| Hub controller | `NotificationProviderClass` | Read |
 | Hub controller | `NotificationDelivery` | Full (owns the CRD) |
+| Provider controllers | `NotificationProviderClass` | Read |
 | Provider controllers | `NotificationDelivery` | Read, Watch |
 | Provider controllers | `NotificationDelivery` status | Patch |
 | Provider controllers | `NotificationTemplate` | Read |
+| Provider controllers | Provider-specific config CRDs | Full |
+| Portal | `NotificationProviderClass` | Read |
 | Portal | `NotificationContact` | Create, Read, Update, Delete |
 | Portal | `Notification` | Read |
 | Portal | `NotificationDelivery` | Read |

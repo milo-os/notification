@@ -25,7 +25,7 @@ jobs:
       - name: Run task generate
         env:
           TASK_X_REMOTE_TASKFILES: 1
-        run: task generate
+        run: task --yes generate
 
       - name: Check for diffs
         run: |

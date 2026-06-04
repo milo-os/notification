@@ -9,16 +9,13 @@ Container_Ext(iam, "IAM Service", "Go", "Detects suspicious logins; fires Notifi
 Container_Ext(billing_svc, "Billing Service", "Go", "Fires billing threshold and quota Notification CRs")
 Container_Ext(compute, "Compute Service", "Go", "Fires quota limit Notification CRs")
 
-System_Ext(resend, "Resend", "Email delivery API")
-System_Ext(loops, "Loops", "Email delivery API")
-System_Ext(twilio, "Twilio", "SMS delivery API (v1+)")
-System_Ext(apns, "APNS", "iOS push API (v1+)")
-System_Ext(fcm, "FCM", "Android push API (v1+)")
 
 System_Boundary(platform, "Milo Control Plane") {
     Container(sdk, "Notification SDK", "Go library", "Fire-and-forget wrapper; creates Notification CRs via Kubernetes API")
 
     Container(hub, "Notification Hub Controller", "Go / controller-runtime", "Resolves NotificationContact via resource hierarchy; enforces category preferences; creates one NotificationDelivery per enabled channel")
+
+    ContainerDb(provider_classes, "NotificationProviderClass CRs", "Kubernetes CRDs (cluster-scoped)", "Operator-configured; one per provider deployment; carries parametersRef to provider-specific config; read by portal to discover available channels")
 
     ContainerDb(contacts, "NotificationContact CRs", "Kubernetes CRDs (cluster-scoped)", "Contact addresses and per-category channel preferences; owned by User, Project, or Organization via ownerReference")
 
@@ -28,11 +25,12 @@ System_Boundary(platform, "Milo Control Plane") {
 
     ContainerDb(deliveries, "NotificationDelivery CRs", "Kubernetes CRDs (cluster-scoped)", "One per enabled channel per Notification; carries resolved address, template ref, and variables; watched by provider controllers")
 
-    Container(resend_ctrl, "resend-provider", "Go / controller-runtime", "Watches NotificationDelivery where channel=email; renders template; calls Resend API")
-    Container(loops_ctrl, "loops-provider", "Go / controller-runtime", "Watches NotificationDelivery where channel=email; renders template; calls Loops API")
-    Container(twilio_ctrl, "twilio-provider", "Go / controller-runtime (v1+)", "Watches NotificationDelivery where channel=sms; calls Twilio API")
-    Container(apns_ctrl, "apns-provider", "Go / controller-runtime (v1+)", "Watches NotificationDelivery where channel=push (iOS); calls APNS")
-    Container(fcm_ctrl, "fcm-provider", "Go / controller-runtime (v1+)", "Watches NotificationDelivery where channel=push (Android); calls FCM")
+    Container(resend_ctrl, "resend-provider", "Go / controller-runtime", "Watches NotificationDelivery (providerClassRef=resend); renders email template; calls Resend API")
+    Container(twilio_ctrl, "twilio-provider", "Go / controller-runtime (v1+)", "Watches NotificationDelivery (providerClassRef=twilio); calls Twilio SMS API")
+    Container(apns_ctrl, "apns-provider", "Go / controller-runtime (v1+)", "Watches NotificationDelivery (providerClassRef=apns); calls APNS push API")
+    Container(fcm_ctrl, "fcm-provider", "Go / controller-runtime (v1+)", "Watches NotificationDelivery (providerClassRef=fcm); calls FCM push API")
+
+    Container_Ext(portal, "cloud-portal", "React / TypeScript", "Discovers available channels via NotificationProviderClass; renders contact preferences UI")
 }
 
 Rel(iam, sdk, "Uses", "Go")
@@ -44,19 +42,18 @@ Rel(sdk, notifications, "Creates Notification CR", "Kubernetes API")
 Rel(hub, notifications, "Watches and reconciles", "Kubernetes watch")
 Rel(hub, contacts, "Reads, walks hierarchy, enforces preferences", "Kubernetes API")
 Rel(hub, templates, "Reads", "Kubernetes API")
-Rel(hub, deliveries, "Creates NotificationDelivery per channel", "Kubernetes API")
+Rel(hub, provider_classes, "Reads to select provider per channel", "Kubernetes API")
+Rel(hub, deliveries, "Creates NotificationDelivery with providerClassRef", "Kubernetes API")
 
-Rel(resend_ctrl, deliveries, "Watches (channel=email) and patches status", "Kubernetes watch")
-Rel(loops_ctrl, deliveries, "Watches (channel=email) and patches status", "Kubernetes watch")
-Rel(twilio_ctrl, deliveries, "Watches (channel=sms) and patches status", "Kubernetes watch")
-Rel(apns_ctrl, deliveries, "Watches (channel=push/ios) and patches status", "Kubernetes watch")
-Rel(fcm_ctrl, deliveries, "Watches (channel=push/android) and patches status", "Kubernetes watch")
+Rel(resend_ctrl, provider_classes, "Reads owned class", "Kubernetes API")
+Rel(resend_ctrl, deliveries, "Watches and patches status", "Kubernetes watch")
+Rel(twilio_ctrl, deliveries, "Watches and patches status", "Kubernetes watch")
+Rel(apns_ctrl, deliveries, "Watches and patches status", "Kubernetes watch")
+Rel(fcm_ctrl, deliveries, "Watches and patches status", "Kubernetes watch")
 
-Rel(resend_ctrl, resend, "Delivers email", "HTTPS")
-Rel(loops_ctrl, loops, "Delivers email", "HTTPS")
-Rel(twilio_ctrl, twilio, "Delivers SMS", "HTTPS")
-Rel(apns_ctrl, apns, "Delivers push", "HTTPS")
-Rel(fcm_ctrl, fcm, "Delivers push", "HTTPS")
+
+Rel(portal, provider_classes, "Lists to discover available channels", "Kubernetes API")
+Rel(portal, contacts, "Manages user/project/org contacts", "Kubernetes API")
 
 SHOW_LEGEND()
 @enduml
