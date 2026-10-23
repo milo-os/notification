@@ -17,6 +17,10 @@ includes:
     taskfile: https://raw.githubusercontent.com/datum-cloud/test-infra/{{.TEST_INFRA_REPO_REF}}/Taskfile.yml
     vars:
       REPO_REF: "{{.TEST_INFRA_REPO_REF}}"
+  # Documentation tasks
+  docs:
+    taskfile: ./docs/Taskfile.yaml
+    dir: ./docs
 
 tasks:
   default:
@@ -28,6 +32,9 @@ tasks:
   # Code generation
   generate:
     desc: Run code generation (deepcopy, defaults)
+    deps:
+      - task: docs:generate
+      - install-tools
     cmds:
       - |
         set -e
@@ -35,8 +42,6 @@ tasks:
         {{.TOOL_DIR}}/controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./..."
         {{.TOOL_DIR}}/defaulter-gen ./internal/config --output-file=zz_generated.defaults.go
         echo "Code generation complete!"
-    deps:
-      - install-tools
     silent: true
 
   manifests:
