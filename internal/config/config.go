@@ -11,6 +11,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -212,5 +213,9 @@ func SetDefaults_ControllerTemplateOperator(obj *ControllerTemplateOperator) {
 }
 
 func init() {
-	SchemeBuilder.Register(&ControllerTemplateOperator{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(GroupVersion, &ControllerTemplateOperator{})
+		metav1.AddToGroupVersion(s, GroupVersion)
+		return nil
+	})
 }
