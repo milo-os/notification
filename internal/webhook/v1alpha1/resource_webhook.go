@@ -4,9 +4,7 @@ package webhook
 
 import (
 	"context"
-	"fmt"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -20,8 +18,7 @@ var resourceLog = logf.Log.WithName("resource-webhook")
 func SetupWebhookWithManager(mgr ctrl.Manager) error {
 	webhook := &resourceWebhook{}
 
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&examplev1alpha1.Resource{}).
+	return ctrl.NewWebhookManagedBy(mgr, &examplev1alpha1.Resource{}).
 		WithDefaulter(webhook).
 		WithValidator(webhook).
 		Complete()
@@ -33,16 +30,11 @@ func SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 type resourceWebhook struct{}
 
-var _ admission.CustomDefaulter = &resourceWebhook{}
-var _ admission.CustomValidator = &resourceWebhook{}
+var _ admission.Defaulter[*examplev1alpha1.Resource] = &resourceWebhook{}
+var _ admission.Validator[*examplev1alpha1.Resource] = &resourceWebhook{}
 
-// Default implements admission.CustomDefaulter.
-func (r *resourceWebhook) Default(ctx context.Context, obj runtime.Object) error {
-	resource, ok := obj.(*examplev1alpha1.Resource)
-	if !ok {
-		return fmt.Errorf("unexpected type %T", obj)
-	}
-
+// Default implements admission.Defaulter.
+func (r *resourceWebhook) Default(ctx context.Context, resource *examplev1alpha1.Resource) error {
 	resourceLog.Info("defaulting", "name", resource.GetName())
 
 	// TODO: add defaulting logic here
@@ -50,13 +42,8 @@ func (r *resourceWebhook) Default(ctx context.Context, obj runtime.Object) error
 	return nil
 }
 
-// ValidateCreate implements admission.CustomValidator.
-func (r *resourceWebhook) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	resource, ok := obj.(*examplev1alpha1.Resource)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type %T", obj)
-	}
-
+// ValidateCreate implements admission.Validator.
+func (r *resourceWebhook) ValidateCreate(ctx context.Context, resource *examplev1alpha1.Resource) (admission.Warnings, error) {
 	resourceLog.Info("validating create", "name", resource.GetName())
 
 	// TODO: add validation logic here
@@ -64,32 +51,17 @@ func (r *resourceWebhook) ValidateCreate(ctx context.Context, obj runtime.Object
 	return nil, nil
 }
 
-// ValidateUpdate implements admission.CustomValidator.
-func (r *resourceWebhook) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	_, ok := oldObj.(*examplev1alpha1.Resource)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type %T", oldObj)
-	}
-
-	newResource, ok := newObj.(*examplev1alpha1.Resource)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type %T", newObj)
-	}
-
-	resourceLog.Info("validating update", "name", newResource.GetName())
+// ValidateUpdate implements admission.Validator.
+func (r *resourceWebhook) ValidateUpdate(ctx context.Context, oldObj, newObj *examplev1alpha1.Resource) (admission.Warnings, error) {
+	resourceLog.Info("validating update", "name", newObj.GetName())
 
 	// TODO: add validation logic here
 
 	return nil, nil
 }
 
-// ValidateDelete implements admission.CustomValidator.
-func (r *resourceWebhook) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	resource, ok := obj.(*examplev1alpha1.Resource)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type %T", obj)
-	}
-
+// ValidateDelete implements admission.Validator.
+func (r *resourceWebhook) ValidateDelete(ctx context.Context, resource *examplev1alpha1.Resource) (admission.Warnings, error) {
 	resourceLog.Info("validating delete", "name", resource.GetName())
 
 	// TODO: add validation logic here
