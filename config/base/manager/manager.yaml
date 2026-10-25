@@ -46,7 +46,7 @@ spec:
           - --leader-elect-namespace=kube-system
           - --health-probe-bind-address=:8081
           - --server-config=/config/config.yaml
-        image: ghcr.io/milo-os/controller-template:dev
+        image: ghcr.io/milo-os/notification:dev
         name: manager
         ports:
         - containerPort: 9443
