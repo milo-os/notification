@@ -2,7 +2,7 @@ version: '3'
 
 vars:
   TOOL_DIR: "{{.USER_WORKING_DIR}}/bin"
-  IMAGE_NAME: "ghcr.io/milo-os/controller-template"
+  IMAGE_NAME: "ghcr.io/milo-os/notification"
   IMAGE_TAG: "dev"
   TEST_INFRA_CLUSTER_NAME: "test-infra"
   TEST_INFRA_REPO_REF: 'v0.6.0'
@@ -326,8 +326,8 @@ tasks:
         set -e
         GIT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
         VERSION="v0.0.0-dev+${GIT_COMMIT:0:7}"
-        docker build -t "ghcr.io/milo-os/controller-template-ui:dev" ui/
-        echo "Built ghcr.io/milo-os/controller-template-ui:dev"
+        docker build -t "ghcr.io/milo-os/notification-ui:dev" ui/
+        echo "Built ghcr.io/milo-os/notification-ui:dev"
     silent: true
 
   # E2E Testing

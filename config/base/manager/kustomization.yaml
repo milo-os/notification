@@ -8,7 +8,7 @@ resources:
 - pdb.yaml
 
 images:
-- name: ghcr.io/milo-os/controller-template
+- name: ghcr.io/milo-os/notification
   newTag: latest
 
 configMapGenerator:

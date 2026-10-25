@@ -1,7 +1,7 @@
 namespace: controller-template-system
 
 images:
-  - name: ghcr.io/milo-os/controller-template
+  - name: ghcr.io/milo-os/notification
     newTag: dev
 
 resources:
