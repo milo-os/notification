@@ -1,0 +1,59 @@
+@startuml notification-hub-containers
+!$NEW_C4_STYLE = 1
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+!include https://raw.githubusercontent.com/datum-cloud/enhancements/main/enhancements/datum-theme.puml
+
+title Notification Hub — Container View
+
+Container_Ext(iam, "IAM Service", "Go", "Detects suspicious logins; fires Notification CRs")
+Container_Ext(billing_svc, "Billing Service", "Go", "Fires billing threshold and quota Notification CRs")
+Container_Ext(compute, "Compute Service", "Go", "Fires quota limit Notification CRs")
+
+
+System_Boundary(platform, "Milo Control Plane") {
+    Container(sdk, "Notification SDK", "Go library", "Fire-and-forget wrapper; creates Notification CRs via Kubernetes API")
+
+    Container(hub, "Notification Hub Controller", "Go / controller-runtime", "Resolves NotificationContact via resource hierarchy; enforces category preferences; creates one NotificationDelivery per enabled channel")
+
+    ContainerDb(provider_classes, "NotificationProviderClass CRs", "Kubernetes CRDs (cluster-scoped)", "Operator-configured; one per provider deployment; carries parametersRef to provider-specific config; read by portal to discover available channels")
+
+    ContainerDb(contacts, "NotificationContact CRs", "Kubernetes CRDs (cluster-scoped)", "Contact addresses and per-category channel preferences; owned by User, Project, or Organization via ownerReference")
+
+    ContainerDb(templates, "NotificationTemplate CRs", "Kubernetes CRDs (cluster-scoped)", "Per-channel content templates (email, sms, push) referenced by NotificationDelivery CRs")
+
+    ContainerDb(notifications, "Notification CRs", "Kubernetes CRDs (cluster-scoped)", "Send requests: target, category, template, variables; hub rolls up per-channel delivery status here")
+
+    ContainerDb(deliveries, "NotificationDelivery CRs", "Kubernetes CRDs (cluster-scoped)", "One per enabled channel per Notification; carries resolved address, template ref, and variables; watched by provider controllers")
+
+    Container(resend_ctrl, "resend-provider", "Go / controller-runtime", "Watches NotificationDelivery (providerClassRef=resend); renders email template; calls Resend API")
+    Container(twilio_ctrl, "twilio-provider", "Go / controller-runtime (v1+)", "Watches NotificationDelivery (providerClassRef=twilio); calls Twilio SMS API")
+    Container(apns_ctrl, "apns-provider", "Go / controller-runtime (v1+)", "Watches NotificationDelivery (providerClassRef=apns); calls APNS push API")
+    Container(fcm_ctrl, "fcm-provider", "Go / controller-runtime (v1+)", "Watches NotificationDelivery (providerClassRef=fcm); calls FCM push API")
+
+    Container_Ext(portal, "cloud-portal", "React / TypeScript", "Discovers available channels via NotificationProviderClass; renders contact preferences UI")
+}
+
+Rel(iam, sdk, "Uses", "Go")
+Rel(billing_svc, sdk, "Uses", "Go")
+Rel(compute, sdk, "Uses", "Go")
+
+Rel(sdk, notifications, "Creates Notification CR", "Kubernetes API")
+
+Rel(hub, notifications, "Watches and reconciles", "Kubernetes watch")
+Rel(hub, contacts, "Reads, walks hierarchy, enforces preferences", "Kubernetes API")
+Rel(hub, templates, "Reads", "Kubernetes API")
+Rel(hub, provider_classes, "Reads to select provider per channel", "Kubernetes API")
+Rel(hub, deliveries, "Creates NotificationDelivery with providerClassRef", "Kubernetes API")
+
+Rel(resend_ctrl, provider_classes, "Reads owned class", "Kubernetes API")
+Rel(resend_ctrl, deliveries, "Watches and patches status", "Kubernetes watch")
+Rel(twilio_ctrl, deliveries, "Watches and patches status", "Kubernetes watch")
+Rel(apns_ctrl, deliveries, "Watches and patches status", "Kubernetes watch")
+Rel(fcm_ctrl, deliveries, "Watches and patches status", "Kubernetes watch")
+
+
+Rel(portal, provider_classes, "Lists to discover available channels", "Kubernetes API")
+Rel(portal, contacts, "Manages user/project/org contacts", "Kubernetes API")
+
+SHOW_LEGEND()
+@enduml
