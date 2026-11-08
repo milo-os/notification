@@ -7,11 +7,11 @@ RUN npm install -g pnpm@10.29.3
 
 WORKDIR /app
 
-COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY tsconfig.json vite.config.ts tailwind.config.js postcss.config.js ./
 COPY app/ ./app/
 
-RUN pnpm install --frozen-lockfile=false
+RUN pnpm install --frozen-lockfile
 RUN pnpm run build
 
 FROM node:26.13.0-alpine3.24 AS runtime
@@ -24,8 +24,8 @@ RUN npm install -g pnpm@10.29.3
 WORKDIR /app
 
 COPY --from=builder /app/package.json /app/pnpm-workspace.yaml ./
-COPY --from=builder /app/pnpm-lock.yaml* ./
-RUN pnpm install --prod --frozen-lockfile=false
+COPY --from=builder /app/pnpm-lock.yaml ./
+RUN pnpm install --prod --frozen-lockfile
 
 COPY --from=builder /app/build ./build
 
