@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	resourceFinalizer = "example.miloapis.com/resource"
+	resourceFinalizer  = "example.miloapis.com/resource"
 	ConditionTypeReady = "Ready"
 )
 
